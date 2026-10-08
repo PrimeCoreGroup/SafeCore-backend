@@ -1,0 +1,7 @@
+﻿services:
+  safecore:
+    image: safecore
+    build:
+      context: .
+      dockerfile: SafeCore/Dockerfile
+
