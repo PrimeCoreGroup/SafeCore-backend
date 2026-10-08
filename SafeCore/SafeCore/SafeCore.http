@@ -1,0 +1,6 @@
+@SafeCore_HostAddress = http://localhost:5086
+
+GET {{SafeCore_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

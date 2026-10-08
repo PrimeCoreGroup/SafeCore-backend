@@ -1,0 +1,9 @@
+@"
+bin/
+obj/
+.vs/
+.idea/
+*.user
+*.DotSettings.user
+appsettings.Local.json
+"@ | Out-File -Encoding utf8 .gitignore
