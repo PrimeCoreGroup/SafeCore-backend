@@ -1,0 +1,13 @@
+.idea/
+.vs/
+.vscode/
+**/bin/
+**/obj/
+**/*.user
+**/*.DotSettings.user
+.env
+.env.*
+!.env.example
+**/appsettings.Local.json
+**/appsettings.*.local.json
+*.log

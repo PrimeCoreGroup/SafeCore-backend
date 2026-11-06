@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: safecore-backend
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./SafeCore/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health/ready
+    preDeployCommand: dotnet SafeCore.dll --migrate
+    autoDeployTrigger: off
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: ASPNETCORE_HTTP_PORTS
+        value: "8080"
+      - key: PORT
+        value: "8080"
+      - key: ASPNETCORE_FORWARDEDHEADERS_ENABLED
+        value: "true"
+      - key: ConnectionStrings__DefaultConnection
+        sync: false
+      - key: Jwt__SigningKey
+        generateValue: true
+      - key: BootstrapAdmin__Email
+        sync: false
+      - key: BootstrapAdmin__Password
+        sync: false

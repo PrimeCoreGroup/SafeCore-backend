@@ -1,76 +1,101 @@
+using System.Security.Cryptography;
+using System.Text;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using SafeCore.DeviceManagement.Application;
 using SafeCore.DeviceManagement.Domain;
-using SafeCore.Shared.Data;
+using SafeCore.SensorDataIngestion.Domain;
+using SafeCore.Shared.Contracts;
 
 namespace SafeCore.DeviceManagement.API;
 
 [ApiController]
-[Route("api/[controller]")]
-public class DevicesController : ControllerBase
+[Route("api/devices")]
+public sealed class DevicesController(IRepository<Device> devices, IRepository<SensorReading> readings) : ControllerBase
 {
-    private readonly SafeCoreDbContext _context;
-
-    public DevicesController(SafeCoreDbContext context)
-    {
-        _context = context;
-    }
-
     [HttpGet]
-    public async Task<IActionResult> GetAll()
+    [Authorize(Roles = "Administrator,Operator,Responder")]
+    public async Task<ActionResult<IReadOnlyCollection<DeviceResponse>>> GetAll(int page = 1, int pageSize = 100, CancellationToken cancellationToken = default)
     {
-        var devices = await _context.Devices.ToListAsync();
-        return Ok(devices);
+        var items = await devices.ListAsync(page, pageSize, cancellationToken);
+        return Ok(items.OrderBy(device => device.SerialNumber).Select(ToResponse));
     }
 
-    [HttpGet("{id}")]
-    public async Task<IActionResult> GetById(Guid id)
+    [HttpGet("{id:guid}")]
+    [Authorize(Roles = "Administrator,Operator,Responder")]
+    public async Task<ActionResult<DeviceResponse>> GetById(Guid id, CancellationToken cancellationToken)
     {
-        var device = await _context.Devices.FindAsync(id);
-        if (device == null) return NotFound();
-        return Ok(device);
+        var device = await devices.GetByIdAsync(id, cancellationToken);
+        return device is null ? NotFound() : Ok(ToResponse(device));
     }
 
     [HttpPost]
-    public async Task<IActionResult> Create(DeviceDto dto)
+    [Authorize(Roles = "Administrator")]
+    public async Task<ActionResult<ProvisionedDeviceResponse>> Create(DeviceDto dto, CancellationToken cancellationToken)
     {
+        var secret = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
         var device = new Device
         {
-            SerialNumber = dto.SerialNumber,
-            Name = dto.Name,
-            Category = dto.Category,
-            ConnectivityStatus = dto.ConnectivityStatus
+            SerialNumber = dto.SerialNumber.Trim(),
+            Name = dto.Name.Trim(),
+            Category = dto.Category.Trim(),
+            ConnectivityStatus = dto.ConnectivityStatus.Trim(),
+            CredentialHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(secret)))
         };
 
-        _context.Devices.Add(device);
-        await _context.SaveChangesAsync();
-        return CreatedAtAction(nameof(GetById), new { id = device.Id }, device);
+        if (await devices.AnyAsync(item => item.SerialNumber == device.SerialNumber, cancellationToken))
+            return Conflict(new ProblemDetails { Title = "A device with this serial number already exists." });
+        devices.Add(device);
+        await devices.SaveChangesAsync(cancellationToken);
+        return CreatedAtAction(nameof(GetById), new { id = device.Id }, new ProvisionedDeviceResponse(ToResponse(device), secret));
     }
 
-    [HttpPut("{id}")]
-    public async Task<IActionResult> Update(Guid id, DeviceDto dto)
+    [HttpPut("{id:guid}")]
+    [Authorize(Roles = "Administrator")]
+    public async Task<IActionResult> Update(Guid id, DeviceDto dto, CancellationToken cancellationToken)
     {
-        var device = await _context.Devices.FindAsync(id);
-        if (device == null) return NotFound();
+        var device = await devices.GetByIdAsync(id, cancellationToken);
+        if (device is null)
+            return NotFound();
 
-        device.SerialNumber = dto.SerialNumber;
-        device.Name = dto.Name;
-        device.Category = dto.Category;
-        device.ConnectivityStatus = dto.ConnectivityStatus;
-
-        await _context.SaveChangesAsync();
+        device.SerialNumber = dto.SerialNumber.Trim();
+        device.Name = dto.Name.Trim();
+        device.Category = dto.Category.Trim();
+        device.ConnectivityStatus = dto.ConnectivityStatus.Trim();
+        if (await devices.AnyAsync(item => item.Id != id && item.SerialNumber == device.SerialNumber, cancellationToken))
+            return Conflict(new ProblemDetails { Title = "A device with this serial number already exists." });
+        await devices.SaveChangesAsync(cancellationToken);
         return NoContent();
     }
 
-    [HttpDelete("{id}")]
-    public async Task<IActionResult> Delete(Guid id)
+    [HttpDelete("{id:guid}")]
+    [Authorize(Roles = "Administrator")]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
-        var device = await _context.Devices.FindAsync(id);
-        if (device == null) return NotFound();
+        var device = await devices.GetByIdAsync(id, cancellationToken);
+        if (device is null)
+            return NotFound();
+        if (await readings.AnyAsync(reading => reading.DeviceId == id, cancellationToken))
+            return Conflict(new ProblemDetails { Title = "A device with recorded sensor readings cannot be deleted." });
 
-        _context.Devices.Remove(device);
-        await _context.SaveChangesAsync();
+        devices.Remove(device);
+        await devices.SaveChangesAsync(cancellationToken);
         return NoContent();
     }
+
+    [HttpPost("{id:guid}/rotate-secret")]
+    [Authorize(Roles = "Administrator")]
+    public async Task<ActionResult<ProvisionedDeviceResponse>> RotateSecret(Guid id, CancellationToken cancellationToken)
+    {
+        var device = await devices.GetByIdAsync(id, cancellationToken);
+        if (device is null)
+            return NotFound();
+
+        var secret = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        device.CredentialHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(secret)));
+        await devices.SaveChangesAsync(cancellationToken);
+        return Ok(new ProvisionedDeviceResponse(ToResponse(device), secret));
+    }
+
+    private static DeviceResponse ToResponse(Device device) => new(device.Id, device.SerialNumber, device.Name, device.Category, device.ConnectivityStatus, device.CreatedAt);
 }

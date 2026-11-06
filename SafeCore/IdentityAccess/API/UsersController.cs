@@ -1,78 +1,116 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SafeCore.IdentityAccess.Application;
 using SafeCore.IdentityAccess.Domain;
-using SafeCore.Shared.Data;
+using SafeCore.Notifications.Domain;
+using SafeCore.Shared.Contracts;
 
 namespace SafeCore.IdentityAccess.API;
 
 [ApiController]
-[Route("api/[controller]")]
-public class UsersController : ControllerBase
+[Authorize(Roles = "Administrator")]
+[Route("api/users")]
+public sealed class UsersController(UserManager<User> userManager, IRepository<Notification> notifications) : ControllerBase
 {
-    private readonly SafeCoreDbContext _context;
-
-    public UsersController(SafeCoreDbContext context)
-    {
-        _context = context;
-    }
-
     [HttpGet]
-    public async Task<IActionResult> GetAll()
+    public async Task<ActionResult<IReadOnlyCollection<UserResponse>>> GetAll(int page = 1, int pageSize = 100)
     {
-        var users = await _context.Users.ToListAsync();
-        return Ok(users);
+        var safePage = Math.Max(page, 1);
+        var safePageSize = Math.Clamp(pageSize, 1, 250);
+        var users = await userManager.Users.OrderBy(user => user.Email)
+            .Skip((int)Math.Min((long)(safePage - 1) * safePageSize, int.MaxValue))
+            .Take(safePageSize)
+            .ToListAsync();
+        var results = new List<UserResponse>(users.Count);
+        foreach (var user in users)
+            results.Add(await ToResponseAsync(user));
+        return Ok(results);
     }
 
-    [HttpGet("{id}")]
-    public async Task<IActionResult> GetById(Guid id)
+    [HttpGet("{id:guid}")]
+    public async Task<ActionResult<UserResponse>> GetById(Guid id)
     {
-        var user = await _context.Users.FindAsync(id);
-        if (user == null) return NotFound();
-        return Ok(user);
+        var user = await userManager.FindByIdAsync(id.ToString());
+        return user is null ? NotFound() : Ok(await ToResponseAsync(user));
     }
 
     [HttpPost]
-    public async Task<IActionResult> Create(UserDto dto)
+    public async Task<ActionResult<UserResponse>> Create(CreateUserRequest request)
     {
         var user = new User
         {
-            Email = dto.Email,
-            FirstName = dto.FirstName,
-            LastName = dto.LastName,
-            PasswordHash = dto.PasswordHash,
-            Status = dto.Status
+            Id = Guid.NewGuid(),
+            UserName = request.Email.Trim(),
+            Email = request.Email.Trim(),
+            FirstName = request.FirstName.Trim(),
+            LastName = request.LastName.Trim(),
+            Status = UserStatuses.Active,
+            EmailConfirmed = true
         };
 
-        _context.Users.Add(user);
-        await _context.SaveChangesAsync();
-        return CreatedAtAction(nameof(GetById), new { id = user.Id }, user);
+        var createResult = await userManager.CreateAsync(user, request.Password);
+        if (!createResult.Succeeded)
+            return BadRequest(new { errors = createResult.Errors.Select(error => error.Description) });
+
+        var roleResult = await userManager.AddToRoleAsync(user, request.Role);
+        if (!roleResult.Succeeded)
+        {
+            await userManager.DeleteAsync(user);
+            return BadRequest(new { errors = roleResult.Errors.Select(error => error.Description) });
+        }
+
+        var response = await ToResponseAsync(user);
+        return CreatedAtAction(nameof(GetById), new { id = user.Id }, response);
     }
 
-    [HttpPut("{id}")]
-    public async Task<IActionResult> Update(Guid id, UserDto dto)
+    [HttpPut("{id:guid}")]
+    public async Task<IActionResult> Update(Guid id, UpdateUserRequest request)
     {
-        var user = await _context.Users.FindAsync(id);
-        if (user == null) return NotFound();
+        var user = await userManager.FindByIdAsync(id.ToString());
+        if (user is null)
+            return NotFound();
 
-        user.Email = dto.Email;
-        user.FirstName = dto.FirstName;
-        user.LastName = dto.LastName;
-        user.PasswordHash = dto.PasswordHash;
-        user.Status = dto.Status;
+        if (user.Id.ToString() == User.FindFirstValue(ClaimTypes.NameIdentifier) && request.Status == UserStatuses.Disabled)
+            return Conflict(new ProblemDetails { Title = "An administrator cannot disable their own account." });
 
-        await _context.SaveChangesAsync();
-        return NoContent();
+        user.FirstName = request.FirstName.Trim();
+        user.LastName = request.LastName.Trim();
+        user.Status = request.Status;
+        var result = await userManager.UpdateAsync(user);
+        return result.Succeeded ? NoContent() : BadRequest(new { errors = result.Errors.Select(error => error.Description) });
     }
 
-    [HttpDelete("{id}")]
+    [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id)
     {
-        var user = await _context.Users.FindAsync(id);
-        if (user == null) return NotFound();
+        var user = await userManager.FindByIdAsync(id.ToString());
+        if (user is null)
+            return NotFound();
+        if (user.Id.ToString() == User.FindFirstValue(ClaimTypes.NameIdentifier))
+            return Conflict(new ProblemDetails { Title = "An administrator cannot delete their own account." });
 
-        _context.Users.Remove(user);
-        await _context.SaveChangesAsync();
-        return NoContent();
+        if (await userManager.IsInRoleAsync(user, "Administrator"))
+        {
+            var otherAdministrators = await userManager.GetUsersInRoleAsync("Administrator");
+            if (otherAdministrators.Count <= 1)
+                return Conflict(new ProblemDetails { Title = "The last administrator account cannot be deleted." });
+        }
+        if (await notifications.AnyAsync(notification => notification.RecipientUserId == id))
+            return Conflict(new ProblemDetails { Title = "A user with notification records cannot be deleted; disable the account instead." });
+
+        var result = await userManager.DeleteAsync(user);
+        return result.Succeeded ? NoContent() : BadRequest(new { errors = result.Errors.Select(error => error.Description) });
     }
+
+    private async Task<UserResponse> ToResponseAsync(User user) => new(
+        user.Id,
+        user.Email ?? string.Empty,
+        user.FirstName,
+        user.LastName,
+        user.Status,
+        (await userManager.GetRolesAsync(user)).ToArray(),
+        user.CreatedAt);
 }

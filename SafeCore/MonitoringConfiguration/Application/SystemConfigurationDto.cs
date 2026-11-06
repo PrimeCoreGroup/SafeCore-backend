@@ -1,10 +1,11 @@
 using System;
+using System.ComponentModel.DataAnnotations;
 
 namespace SafeCore.MonitoringConfiguration.Application;
 
 public class SystemConfigurationDto
 {
-    public int Version { get; set; }
-    public string SyncStatus { get; set; } = string.Empty;
-    public DateTime LastSyncedAt { get; set; }
+    [Range(1, int.MaxValue)] public int Version { get; set; }
+    [Required, RegularExpression("^(Pending|Synced|Failed)$")] public string SyncStatus { get; set; } = "Pending";
+    public DateTime? LastSyncedAt { get; set; }
 }

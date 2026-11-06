@@ -7,5 +7,5 @@ public class SystemConfiguration : Entity
 {
     public int Version { get; set; }
     public string SyncStatus { get; set; } = string.Empty;
-    public DateTime LastSyncedAt { get; set; }
+    public DateTime? LastSyncedAt { get; set; }
 }
