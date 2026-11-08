@@ -28,6 +28,7 @@ public class ResponseActionDto
 {
     [Required]
     public Guid EmergencyResponseId { get; set; }
+    public Guid? ComponentId { get; set; }
     [Required, StringLength(50)]
     public string ActuatorType { get; set; } = string.Empty;
     [Required, StringLength(1000)]

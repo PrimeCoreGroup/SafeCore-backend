@@ -7,9 +7,9 @@ namespace SafeCore.SensorDataIngestion.Infrastructure;
 
 public sealed class EfSensorReadingHistory(SafeCoreDbContext context) : ISensorReadingHistory
 {
-    public Task<SensorReading?> GetPreviousAsync(Guid deviceId, string sensorType, DateTime capturedAtUtc, CancellationToken cancellationToken = default) =>
+    public Task<SensorReading?> GetPreviousAsync(Guid deviceId, Guid? componentId, string sensorType, DateTime capturedAtUtc, CancellationToken cancellationToken = default) =>
         context.SensorReadings.AsNoTracking()
-            .Where(reading => reading.DeviceId == deviceId && reading.SensorType == sensorType && reading.CapturedAt < capturedAtUtc)
+            .Where(reading => reading.DeviceId == deviceId && reading.ComponentId == componentId && reading.SensorType == sensorType && reading.CapturedAt < capturedAtUtc)
             .OrderByDescending(reading => reading.CapturedAt)
             .FirstOrDefaultAsync(cancellationToken);
 }

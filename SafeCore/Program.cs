@@ -17,6 +17,9 @@ using SafeCore.SensorDataIngestion.Application;
 using SafeCore.SensorDataIngestion.Infrastructure;
 using SafeCore.Shared.Data;
 using SafeCore.Shared.Contracts;
+using SafeCore.Locations.Application;
+using SafeCore.MonitoringConfiguration.Application;
+using SafeCore.DeviceManagement.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
@@ -40,6 +43,10 @@ builder.Services.AddDbContext<SafeCoreDbContext>(options => options.UseMySQL(con
 builder.Services.AddScoped(typeof(IRepository<>), typeof(EfRepository<>));
 builder.Services.AddScoped<ISensorReadingHistory, EfSensorReadingHistory>();
 builder.Services.AddScoped<ISafetyAssessmentService, SafetyAssessmentService>();
+builder.Services.AddScoped<SafetyConfigurationStore>();
+builder.Services.AddScoped<CriticalAlertNotifier>();
+builder.Services.AddScoped<LocationAccessService>();
+builder.Services.AddHostedService<DeviceHeartbeatMonitor>();
 builder.Services.AddOptions<SafetyThresholds>()
     .BindConfiguration(SafetyThresholds.SectionName)
     .Validate(options => options.TemperatureCelsius is > -55 and <= 125, "SafetyThresholds:TemperatureCelsius must be within the DS18B20 range.")
@@ -151,6 +158,8 @@ await using (var scope = app.Services.CreateAsyncScope())
     {
         app.Logger.LogWarning(exception, "IAM seeding was skipped because the development database is unavailable. Swagger remains available.");
     }
+    if (!app.Environment.IsDevelopment())
+        await scope.ServiceProvider.GetRequiredService<SafetyConfigurationStore>().GetAsync();
 }
 app.UseExceptionHandler();
 app.UseForwardedHeaders();
@@ -165,6 +174,34 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseAuthentication();
+app.Use(async (context, next) =>
+{
+    var principal = context.User;
+    if (principal.Identity?.IsAuthenticated == true)
+    {
+        var userIdValue = principal.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (Guid.TryParse(userIdValue, out var userId))
+        {
+            var userManager = context.RequestServices.GetRequiredService<UserManager<User>>();
+            var account = await userManager.FindByIdAsync(userId.ToString());
+            var stamp = principal.FindFirst("security_stamp")?.Value;
+            if (account is null || account.Status != UserStatuses.Active || stamp != account.SecurityStamp)
+            {
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                return;
+            }
+            if (account.MustChangePassword
+                && !context.Request.Path.StartsWithSegments("/api/iam/auth/change-password")
+                && !context.Request.Path.StartsWithSegments("/api/iam/auth/me"))
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                await context.Response.WriteAsJsonAsync(new { title = "Password change required.", changePasswordEndpoint = "/api/iam/auth/change-password" });
+                return;
+            }
+        }
+    }
+    await next();
+});
 app.UseAuthorization();
 app.MapControllers();
 app.MapGet("/health/live", () => Results.Ok(new { status = "live" })).AllowAnonymous();

@@ -164,9 +164,15 @@ namespace SafeCore.Shared.Data.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("char(36)");
+
                     b.Property<string>("CredentialHash")
                         .HasMaxLength(64)
                         .HasColumnType("varchar(64)");
+
+                    b.Property<DateTime?>("LastSeenAt")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -181,12 +187,152 @@ namespace SafeCore.Shared.Data.Migrations
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<Guid?>("ZoneId")
+                        .HasColumnType("char(36)");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId");
 
                     b.HasIndex("SerialNumber")
                         .IsUnique();
 
+                    b.HasIndex("ZoneId");
+
                     b.ToTable("Devices");
+                });
+
+            modelBuilder.Entity("SafeCore.DeviceManagement.Domain.DeviceCommand", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("CommandType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("ComponentId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("RequestedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Result")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ComponentId");
+
+                    b.HasIndex("DeviceId", "Status", "RequestedAt");
+
+                    b.ToTable("DeviceCommands");
+                });
+
+            modelBuilder.Entity("SafeCore.DeviceManagement.Domain.DeviceComponent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Channel")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("InstalledAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<DateTime?>("LastSeenAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("ReplacedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeviceId", "Kind", "Type", "Channel")
+                        .IsUnique();
+
+                    b.ToTable("DeviceComponents");
+                });
+
+            modelBuilder.Entity("SafeCore.DeviceManagement.Domain.DeviceConnectivityEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("ConnectivityStatus")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeviceId", "OccurredAt");
+
+                    b.ToTable("DeviceConnectivityEvents");
                 });
 
             modelBuilder.Entity("SafeCore.Emergency.Domain.EmergencyProtocol", b =>
@@ -267,6 +413,9 @@ namespace SafeCore.Shared.Data.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("varchar(50)");
 
+                    b.Property<Guid?>("ComponentId")
+                        .HasColumnType("char(36)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
@@ -287,6 +436,8 @@ namespace SafeCore.Shared.Data.Migrations
                         .HasColumnType("datetime(6)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ComponentId");
 
                     b.HasIndex("EmergencyResponseId");
 
@@ -331,6 +482,9 @@ namespace SafeCore.Shared.Data.Migrations
 
                     b.Property<DateTimeOffset?>("LockoutEnd")
                         .HasColumnType("datetime");
+
+                    b.Property<bool>("MustChangePassword")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<string>("NormalizedEmail")
                         .HasMaxLength(256)
@@ -377,6 +531,150 @@ namespace SafeCore.Shared.Data.Migrations
                         .HasDatabaseName("UserNameIndex");
 
                     b.ToTable("AspNetUsers", (string)null);
+                });
+
+            modelBuilder.Entity("SafeCore.Locations.Domain.PropertySite", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Address")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name");
+
+                    b.ToTable("Properties");
+                });
+
+            modelBuilder.Entity("SafeCore.Locations.Domain.UserAssignment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("ZoneId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PropertyId");
+
+                    b.HasIndex("ZoneId");
+
+                    b.HasIndex("UserId", "PropertyId", "ZoneId")
+                        .IsUnique();
+
+                    b.ToTable("UserAssignments");
+                });
+
+            modelBuilder.Entity("SafeCore.Locations.Domain.Zone", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PropertyId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("Zones");
+                });
+
+            modelBuilder.Entity("SafeCore.MonitoringConfiguration.Domain.SafetyConfiguration", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<double>("AccelerationMagnitudeDeltaCounts")
+                        .HasColumnType("double");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("CriticalAlertsEnabled")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<decimal>("GasAdcRiseCounts")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("ImpactAlertMilliseconds")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("ManualConfirmation")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("NotifyResponders")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int>("SingletonKey")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SystemName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<decimal>("TemperatureCelsius")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("TimeZone")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SingletonKey")
+                        .IsUnique();
+
+                    b.ToTable("SafetyConfigurations");
                 });
 
             modelBuilder.Entity("SafeCore.MonitoringConfiguration.Domain.SystemConfiguration", b =>
@@ -458,6 +756,9 @@ namespace SafeCore.Shared.Data.Migrations
                     b.Property<DateTime?>("AlertUntil")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<Guid?>("ComponentId")
+                        .HasColumnType("char(36)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
@@ -471,6 +772,9 @@ namespace SafeCore.Shared.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<string>("RiskType")
                         .IsRequired()
@@ -491,6 +795,8 @@ namespace SafeCore.Shared.Data.Migrations
                         .HasColumnType("datetime(6)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ComponentId");
 
                     b.HasIndex("DetectedAt");
 
@@ -516,6 +822,9 @@ namespace SafeCore.Shared.Data.Migrations
 
                     b.Property<DateTime>("CapturedAt")
                         .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("ComponentId")
+                        .HasColumnType("char(36)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
@@ -544,7 +853,11 @@ namespace SafeCore.Shared.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ComponentId");
+
                     b.HasIndex("DeviceId", "SensorType", "CapturedAt");
+
+                    b.HasIndex("DeviceId", "ComponentId", "SensorType", "CapturedAt");
 
                     b.ToTable("SensorReadings", t =>
                         {
@@ -603,6 +916,52 @@ namespace SafeCore.Shared.Data.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("SafeCore.DeviceManagement.Domain.Device", b =>
+                {
+                    b.HasOne("SafeCore.IdentityAccess.Domain.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SafeCore.Locations.Domain.Zone", null)
+                        .WithMany()
+                        .HasForeignKey("ZoneId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("SafeCore.DeviceManagement.Domain.DeviceCommand", b =>
+                {
+                    b.HasOne("SafeCore.DeviceManagement.Domain.DeviceComponent", null)
+                        .WithMany()
+                        .HasForeignKey("ComponentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SafeCore.DeviceManagement.Domain.Device", null)
+                        .WithMany()
+                        .HasForeignKey("DeviceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SafeCore.DeviceManagement.Domain.DeviceComponent", b =>
+                {
+                    b.HasOne("SafeCore.DeviceManagement.Domain.Device", null)
+                        .WithMany()
+                        .HasForeignKey("DeviceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SafeCore.DeviceManagement.Domain.DeviceConnectivityEvent", b =>
+                {
+                    b.HasOne("SafeCore.DeviceManagement.Domain.Device", null)
+                        .WithMany()
+                        .HasForeignKey("DeviceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("SafeCore.Emergency.Domain.EmergencyResponse", b =>
                 {
                     b.HasOne("SafeCore.Emergency.Domain.EmergencyProtocol", null)
@@ -620,9 +979,43 @@ namespace SafeCore.Shared.Data.Migrations
 
             modelBuilder.Entity("SafeCore.Emergency.Domain.ResponseAction", b =>
                 {
+                    b.HasOne("SafeCore.DeviceManagement.Domain.DeviceComponent", null)
+                        .WithMany()
+                        .HasForeignKey("ComponentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("SafeCore.Emergency.Domain.EmergencyResponse", null)
                         .WithMany()
                         .HasForeignKey("EmergencyResponseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SafeCore.Locations.Domain.UserAssignment", b =>
+                {
+                    b.HasOne("SafeCore.Locations.Domain.PropertySite", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SafeCore.IdentityAccess.Domain.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SafeCore.Locations.Domain.Zone", null)
+                        .WithMany()
+                        .HasForeignKey("ZoneId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("SafeCore.Locations.Domain.Zone", b =>
+                {
+                    b.HasOne("SafeCore.Locations.Domain.PropertySite", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
@@ -638,6 +1031,11 @@ namespace SafeCore.Shared.Data.Migrations
 
             modelBuilder.Entity("SafeCore.RiskDetection.Domain.RiskSituation", b =>
                 {
+                    b.HasOne("SafeCore.DeviceManagement.Domain.DeviceComponent", null)
+                        .WithMany()
+                        .HasForeignKey("ComponentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("SafeCore.DeviceManagement.Domain.Device", null)
                         .WithMany()
                         .HasForeignKey("DeviceId")
@@ -646,6 +1044,11 @@ namespace SafeCore.Shared.Data.Migrations
 
             modelBuilder.Entity("SafeCore.SensorDataIngestion.Domain.SensorReading", b =>
                 {
+                    b.HasOne("SafeCore.DeviceManagement.Domain.DeviceComponent", null)
+                        .WithMany()
+                        .HasForeignKey("ComponentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("SafeCore.DeviceManagement.Domain.Device", null)
                         .WithMany()
                         .HasForeignKey("DeviceId")

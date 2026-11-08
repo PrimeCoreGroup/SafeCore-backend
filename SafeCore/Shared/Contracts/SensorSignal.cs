@@ -2,6 +2,7 @@ namespace SafeCore.Shared.Contracts;
 
 public sealed record SensorSignal(
     Guid DeviceId,
+    Guid? ComponentId,
     string SensorType,
     decimal? MeasuredValue,
     decimal? AxisX,

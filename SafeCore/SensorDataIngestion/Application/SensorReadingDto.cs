@@ -5,6 +5,7 @@ namespace SafeCore.SensorDataIngestion.Application;
 public sealed class SensorReadingDto : IValidatableObject
 {
     [Required] public Guid DeviceId { get; set; }
+    public Guid? ComponentId { get; set; }
     [Required, RegularExpression("^(Accelerometer|Gyroscope|Gas|Temperature)$")] public string SensorType { get; set; } = string.Empty;
     public decimal? MeasuredValue { get; set; }
     public decimal? AxisX { get; set; }
@@ -46,6 +47,7 @@ public sealed class SensorReadingDto : IValidatableObject
 public sealed record SensorReadingResponse(
     Guid Id,
     Guid DeviceId,
+    Guid? ComponentId,
     string SensorType,
     decimal? MeasuredValue,
     decimal? AxisX,

@@ -1,11 +1,14 @@
 using System;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
 using SafeCore.Shared.Contracts;
 using SafeCore.Emergency.Domain;
-using SafeCore.RiskDetection.Application;
 using SafeCore.RiskDetection.Domain;
+using SafeCore.Shared.Data;
+using SafeCore.Locations.Application;
+using SafeCore.RiskDetection.Application;
 
 namespace SafeCore.RiskDetection.API;
 
@@ -16,16 +19,30 @@ public class RiskSituationsController : ControllerBase
 {
     private readonly IRepository<RiskSituation> _situations;
     private readonly IRepository<EmergencyResponse> _responses;
-    public RiskSituationsController(IRepository<RiskSituation> situations, IRepository<EmergencyResponse> responses)
+    private readonly SafeCoreDbContext _db;
+    private readonly LocationAccessService _access;
+    private readonly CriticalAlertNotifier _notifier;
+    public RiskSituationsController(IRepository<RiskSituation> situations, IRepository<EmergencyResponse> responses, SafeCoreDbContext db, LocationAccessService access, CriticalAlertNotifier notifier)
     {
         _situations = situations;
         _responses = responses;
+        _db = db; _access = access; _notifier = notifier;
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetAll(int page = 1, int pageSize = 100, CancellationToken cancellationToken = default)
+    public async Task<IActionResult> GetAll(int page = 1, int pageSize = 100, DateTimeOffset? from = null, DateTimeOffset? to = null, CancellationToken cancellationToken = default)
     {
-        var situations = await _situations.ListAsync(page, pageSize, cancellationToken);
+        if (from >= to && from is not null && to is not null) return BadRequest(new ProblemDetails { Title = "from must be earlier than to." });
+        var query = _db.RiskSituations.AsNoTracking();
+        if (from is not null) query = query.Where(item => item.DetectedAt >= from.Value.UtcDateTime);
+        if (to is not null) query = query.Where(item => item.DetectedAt < to.Value.UtcDateTime);
+        if (!User.IsInRole("Administrator"))
+        {
+            var ids = await _access.DeviceIdsAsync(User, cancellationToken);
+            query = query.Where(item => item.DeviceId == null || ids.Contains(item.DeviceId.Value));
+        }
+        var safePage = Math.Max(page, 1); var safeSize = Math.Clamp(pageSize, 1, 250);
+        var situations = await query.OrderByDescending(item => item.CreatedAt).Skip((int)Math.Min((long)(safePage - 1) * safeSize, int.MaxValue)).Take(safeSize).ToListAsync(cancellationToken);
         return Ok(situations);
     }
 
@@ -34,6 +51,7 @@ public class RiskSituationsController : ControllerBase
     {
         var situation = await _situations.GetByIdAsync(id);
         if (situation == null) return NotFound();
+        if (situation.DeviceId is { } deviceId && !User.IsInRole("Administrator") && !(await _access.DeviceIdsAsync(User)).Contains(deviceId)) return Forbid();
         return Ok(situation);
     }
 
@@ -46,11 +64,13 @@ public class RiskSituationsController : ControllerBase
             RiskType = dto.RiskType,
             Status = dto.Status,
             Severity = dto.Severity,
-            DetectedAt = dto.DetectedAt
+            DetectedAt = dto.DetectedAt,
+            ResolvedAt = dto.Status == "Resolved" ? DateTime.UtcNow : null
         };
 
         _situations.Add(situation);
         await _situations.SaveChangesAsync();
+        await _notifier.NotifyRespondersAsync(situation);
         return CreatedAtAction(nameof(GetById), new { id = situation.Id }, situation);
     }
 
@@ -60,7 +80,10 @@ public class RiskSituationsController : ControllerBase
     {
         var situation = await _situations.GetByIdAsync(id);
         if (situation == null) return NotFound();
+        if (situation.DeviceId is { } scopedDeviceId && !User.IsInRole("Administrator") && !(await _access.DeviceIdsAsync(User)).Contains(scopedDeviceId)) return Forbid();
 
+        if (dto.Status == "Resolved" && (situation.Status != "Resolved" || situation.ResolvedAt is null)) situation.ResolvedAt = DateTime.UtcNow;
+        else if (dto.Status != "Resolved") situation.ResolvedAt = null;
         situation.RiskType = dto.RiskType;
         situation.Status = dto.Status;
         situation.Severity = dto.Severity;

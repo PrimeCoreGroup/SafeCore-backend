@@ -8,6 +8,7 @@ public sealed class User : IdentityUser<Guid>
     public string LastName { get; set; } = string.Empty;
     public string Status { get; set; } = UserStatuses.Active;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public bool MustChangePassword { get; set; }
 }
 
 public static class UserStatuses

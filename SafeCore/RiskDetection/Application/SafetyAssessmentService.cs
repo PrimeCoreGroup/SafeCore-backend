@@ -1,16 +1,15 @@
-using Microsoft.Extensions.Options;
+using SafeCore.MonitoringConfiguration.Application;
 using SafeCore.RiskDetection.Domain;
 using SafeCore.Shared.Contracts;
 
 namespace SafeCore.RiskDetection.Application;
 
-public sealed class SafetyAssessmentService(IRepository<RiskSituation> risks, IOptions<SafetyThresholds> options) : ISafetyAssessmentService
+public sealed class SafetyAssessmentService(IRepository<RiskSituation> risks, SafetyConfigurationStore configurationStore, CriticalAlertNotifier notifier) : ISafetyAssessmentService
 {
-    private readonly SafetyThresholds _thresholds = options.Value;
-
     public async Task AssessAsync(SensorSignal reading, SensorSignal? previousReading, CancellationToken cancellationToken = default)
     {
-        var riskType = DetermineRisk(reading, previousReading);
+        var thresholds = await configurationStore.GetAsync(cancellationToken);
+        var riskType = DetermineRisk(reading, previousReading, thresholds);
         if (riskType is null)
         {
             await ResolveClearedRisksAsync(reading, cancellationToken);
@@ -18,10 +17,10 @@ public sealed class SafetyAssessmentService(IRepository<RiskSituation> risks, IO
         }
 
         DateTime? alertUntil = riskType == "Earthquake"
-            ? reading.CapturedAtUtc.AddMilliseconds(_thresholds.ImpactAlertMilliseconds)
+            ? reading.CapturedAtUtc.AddMilliseconds(thresholds.ImpactAlertMilliseconds)
             : null;
         var openRisks = await risks.ListWhereAsync(
-            risk => risk.DeviceId == reading.DeviceId && risk.Origin == "Sensor" && risk.RiskType == riskType && risk.Status != "Resolved",
+            risk => risk.DeviceId == reading.DeviceId && risk.ComponentId == reading.ComponentId && risk.Origin == "Sensor" && risk.RiskType == riskType && risk.Status != "Resolved",
             page: 1,
             pageSize: 250,
             cancellationToken);
@@ -41,17 +40,20 @@ public sealed class SafetyAssessmentService(IRepository<RiskSituation> risks, IO
             return;
         }
 
-        risks.Add(new RiskSituation
+        var risk = new RiskSituation
         {
             DeviceId = reading.DeviceId,
+            ComponentId = reading.ComponentId,
             Origin = "Sensor",
             RiskType = riskType,
             Status = "Open",
             Severity = "Critical",
             DetectedAt = reading.CapturedAtUtc,
             AlertUntil = alertUntil
-        });
+        };
+        risks.Add(risk);
         await risks.SaveChangesAsync(cancellationToken);
+        await notifier.NotifyRespondersAsync(risk, cancellationToken);
     }
 
     private async Task ResolveClearedRisksAsync(SensorSignal reading, CancellationToken cancellationToken)
@@ -67,7 +69,7 @@ public sealed class SafetyAssessmentService(IRepository<RiskSituation> risks, IO
             return;
 
         var activeRisks = await risks.ListWhereAsync(
-            risk => risk.DeviceId == reading.DeviceId && risk.Origin == "Sensor" && risk.Status != "Resolved" && typesToResolve.Contains(risk.RiskType),
+            risk => risk.DeviceId == reading.DeviceId && risk.ComponentId == reading.ComponentId && risk.Origin == "Sensor" && risk.Status != "Resolved" && typesToResolve.Contains(risk.RiskType),
             page: 1,
             pageSize: 250,
             cancellationToken);
@@ -78,19 +80,20 @@ public sealed class SafetyAssessmentService(IRepository<RiskSituation> risks, IO
             if (risk.RiskType == "Earthquake" && risk.AlertUntil > reading.CapturedAtUtc)
                 continue;
             risk.Status = "Resolved";
+            risk.ResolvedAt = DateTime.UtcNow;
             changed = true;
         }
         if (changed)
             await risks.SaveChangesAsync(cancellationToken);
     }
 
-    private string? DetermineRisk(SensorSignal reading, SensorSignal? previousReading)
+    private static string? DetermineRisk(SensorSignal reading, SensorSignal? previousReading, SafeCore.MonitoringConfiguration.Domain.SafetyConfiguration thresholds)
     {
         if (reading.SensorType == "Temperature")
         {
             if (reading.MeasuredValue is null or < -55 or > 125)
                 return "SensorFault";
-            return reading.MeasuredValue >= _thresholds.TemperatureCelsius ? "Fire" : null;
+            return reading.MeasuredValue >= thresholds.TemperatureCelsius ? "Fire" : null;
         }
 
         if (reading.SensorType == "Gas")
@@ -98,7 +101,7 @@ public sealed class SafetyAssessmentService(IRepository<RiskSituation> risks, IO
             var digitalAlarmActive = reading.DigitalAlarm == true;
             var rapidRise = previousReading?.MeasuredValue is { } previousValue
                 && reading.MeasuredValue is { } currentValue
-                && currentValue - previousValue > _thresholds.GasAdcRiseCounts;
+                && currentValue - previousValue > thresholds.GasAdcRiseCounts;
             return digitalAlarmActive || rapidRise ? "GasOrSmoke" : null;
         }
 
@@ -108,7 +111,7 @@ public sealed class SafetyAssessmentService(IRepository<RiskSituation> risks, IO
         {
             var currentMagnitude = Math.Sqrt((double)(x * x + y * y + z * z));
             var previousMagnitude = Math.Sqrt((double)(previousX * previousX + previousY * previousY + previousZ * previousZ));
-            return Math.Abs(currentMagnitude - previousMagnitude) > _thresholds.AccelerationMagnitudeDeltaCounts
+            return Math.Abs(currentMagnitude - previousMagnitude) > thresholds.AccelerationMagnitudeDeltaCounts
                 ? "Earthquake"
                 : null;
         }

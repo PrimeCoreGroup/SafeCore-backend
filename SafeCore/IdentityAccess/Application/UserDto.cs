@@ -32,4 +32,9 @@ public sealed class UpdateUserRequest
     public string Status { get; init; } = string.Empty;
 }
 
-public sealed record UserResponse(Guid Id, string Email, string FirstName, string LastName, string Status, IReadOnlyCollection<string> Roles, DateTime CreatedAt);
+public sealed class ResetPasswordRequest
+{
+    [Required, MinLength(12), MaxLength(128)] public string NewPassword { get; init; } = string.Empty;
+}
+
+public sealed record UserResponse(Guid Id, string Email, string FirstName, string LastName, string Status, IReadOnlyCollection<string> Roles, DateTime CreatedAt, bool MustChangePassword);

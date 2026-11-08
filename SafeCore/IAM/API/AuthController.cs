@@ -35,7 +35,7 @@ public sealed class AuthController(
         var roles = (await userManager.GetRolesAsync(user)).ToArray();
         return Ok(new LoginResponse(
             await tokenService.CreateUserTokenAsync(user),
-            new AuthenticatedUserResponse(user.Id, user.Email ?? string.Empty, user.FirstName, user.LastName, roles)));
+            new AuthenticatedUserResponse(user.Id, user.Email ?? string.Empty, user.FirstName, user.LastName, roles, user.MustChangePassword)));
     }
 
     [Authorize]
@@ -49,7 +49,23 @@ public sealed class AuthController(
         if (user is null || user.Status != UserStatuses.Active)
             return Unauthorized();
         return Ok(new AuthenticatedUserResponse(user.Id, user.Email ?? string.Empty, user.FirstName, user.LastName,
-            (await userManager.GetRolesAsync(user)).ToArray()));
+            (await userManager.GetRolesAsync(user)).ToArray(), user.MustChangePassword));
+    }
+
+    [Authorize]
+    [HttpPost("change-password")]
+    public async Task<IActionResult> ChangePassword(ChangePasswordRequest request)
+    {
+        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (!Guid.TryParse(userId, out var id)) return Unauthorized();
+        var user = await userManager.FindByIdAsync(id.ToString());
+        if (user is null || user.Status != UserStatuses.Active) return Unauthorized();
+        var result = await userManager.ChangePasswordAsync(user, request.CurrentPassword, request.NewPassword);
+        if (!result.Succeeded) return BadRequest(new { errors = result.Errors.Select(error => error.Description) });
+        user.MustChangePassword = false;
+        var update = await userManager.UpdateAsync(user);
+        if (!update.Succeeded) return BadRequest(new { errors = update.Errors.Select(error => error.Description) });
+        return NoContent();
     }
 
     [AllowAnonymous]

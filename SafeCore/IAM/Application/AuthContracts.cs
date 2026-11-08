@@ -20,9 +20,15 @@ public sealed class DeviceTokenRequest
     public string Secret { get; init; } = string.Empty;
 }
 
+public sealed class ChangePasswordRequest
+{
+    [Required, MinLength(12), MaxLength(128)] public string CurrentPassword { get; init; } = string.Empty;
+    [Required, MinLength(12), MaxLength(128)] public string NewPassword { get; init; } = string.Empty;
+}
+
 public sealed record TokenResponse(string AccessToken, string TokenType, int ExpiresInSeconds);
 public sealed record LoginResponse(TokenResponse Token, AuthenticatedUserResponse User);
-public sealed record AuthenticatedUserResponse(Guid Id, string Email, string FirstName, string LastName, IReadOnlyCollection<string> Roles);
+public sealed record AuthenticatedUserResponse(Guid Id, string Email, string FirstName, string LastName, IReadOnlyCollection<string> Roles, bool MustChangePassword = false);
 
 public sealed record JwtOptions
 {

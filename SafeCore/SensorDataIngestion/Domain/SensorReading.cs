@@ -6,6 +6,7 @@ namespace SafeCore.SensorDataIngestion.Domain;
 public class SensorReading : Entity
 {
     public Guid DeviceId { get; set; }
+    public Guid? ComponentId { get; set; }
     public string SensorType { get; set; } = string.Empty;
     public decimal? MeasuredValue { get; set; }
     public decimal? AxisX { get; set; }
